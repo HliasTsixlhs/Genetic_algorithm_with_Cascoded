@@ -1,0 +1,1417 @@
+#include <stdio.h>
+#include <math.h>
+#include<stdlib.h>
+#include <time.h>
+#include <limits.h>
+#include <float.h>
+
+
+//Global Variables
+	double n0_nmos = 1.36203416634948;
+	double n0_pmos = 1.49929191506295;
+	double Ut = 0.025852;
+	double Val_nmos = 20; // 8 V/um   
+	double Val_pmos = 20; // 8 V/um 
+	double Cox = 6.9; //0.0069 F/m^2 => 6.9 ff/um^2
+	double u0_nmos = 507.4947; // cm^2/V*s
+	double u0_pmos = 101.4987; // cm^2/V*s
+	double Io_nmos = 5.39252351227600e-07; // 0.539252351227600e-06 A or 0.539252351227600 uA
+	double Io_pmos = 1.64269005014000e-07; // 0.164269005014000e-06 A or 0.164269005014000 uA
+	double T = 300; // temperature at 300 K
+	double k = 1.3806e-23 ; // Boltzmann's constant , J/K 
+	double VT_nmos = 200e-3; // 200mV //Prepei na to kanw extaction apo device me L=2000nm
+	double VT_pmos = 280e-3; // 200mV //Prepei na to kanw extaction apo device me L=2000nm
+	//double KF_nmos = 2.7e-25; // C^2/cm^2 h' C^2/um^2 ?? -- upothetw um^2  // Prepei na elenksw tis monades!!! Egw to thelw se KF_hand = KF/Cox (nV)^2*um^2 
+	double KF_nmos = pow(7529,2); // (nV)^2*um^2 -- Auto einai to KF_hand_nmos
+    double AF_nmos = 0.85;
+    //double KF_pmos = 0.9e-25; // C^2/cm^2 h' C^2/m^2 ?? -- upothetw m^2  // Prepei na elenksw tis monades!!! Egw to thelw se KF_hand = KF/Cox (nV)^2*um^2 
+    double KF_pmos = pow(4347,2); // (nV)^2*um^2 -- Auto einai to KF_hand_pmos
+	double AF_pmos = 0.9;
+	double AVTO_nmos = 14e-3; //V*um //Autes oi times einai apo thn texnologia twn 0.5um toy Binkley !!!
+	double AVTO_pmos = 14e-3; //V*um //Autes oi times einai apo thn texnologia twn 0.5um toy Binkley !!!
+	
+	//Autes oi times prepei na elenxthoun me ton Niko :O
+	double CJ_nmos  = 1.4; // ff/um^2    // process area capacitance
+	double CJ_pmos = 0.98; // ff/um^2   //process perimeter capacitance
+	double CJSW_nmos = 2.55; // ff/um
+	double CJSW_pmos = 1.5; // ff/um
+	double Wdif = 25e-9; // Assumeing 25nm !!! // Wdif : is the process width of drain fingers.
+	
+	// For all designs  
+	double VDD = 2.5; // (Volts)
+	double VSS = 0; // (Volts)
+    
+	struct device
+	{
+		double L;
+		double IC;
+		//These parameters will be initialized for the type of the devices ( nmos - pmos )
+		double n0;
+		double u0;
+		double Io;
+		double VT;
+		double KF;	 
+		double AF;
+		double AVTO;
+		double CJ;
+		double CJSW;
+		// These parameters will not be initialized ( They will be calculated )
+		double W; 
+		double Thermal_noise_factor;
+		double gm;
+		double VDSsat;
+		
+	};
+	
+		struct SimpleOTA
+	{
+		double Ibias;
+		struct device Mosfets[10];
+		//OTA specs
+		double OTA_Transconductance;
+		double OTA_OutputResistance;
+		double OTA_VoltageGain;
+		double OTA_FrequencyResponse;
+		double OTA_PhaseMargin;
+		double OTA_Thermal_Noise;
+		double OTA_Flicker_Noise;
+		double OTA_Offset_Voltage_input_DueTo_Mismatch;
+		double OTA_Input_Capacitance;
+		double OTA_Output_Capacitance;
+		double OTA_Slew_Rate;
+		double OTA_VINCM_Plus;
+		double OTA_VINCM_Minus;
+		double OTA_Maximun_Output_Voltage;
+		double OTA_Minimum_Output_Voltage;
+		double OTA_Power_Consumption;
+		
+	};
+	
+// functions Declaration
+
+void Generate_Randoms(int lowerLength, int upperLength,int lowerIC,int upperIC,int lowerIbias,int upperIbias,struct device Mosfets[],double *Ibias);
+void Initialize_TypeDevices(struct device Mosfets[]);
+void Calculate_Mosfets_Parameters(struct device Mosfets[],double Ibias);
+double Transconductance_Calc(double Ibias,double IC);
+double OutputResistance_Calc(double L4,double L6,double Ibias);
+double VoltageGain_Calc(double GM,double Rout);
+double FrequencyResponse_Calc(struct device Mosfets[]);
+double PhaseMargin_Calc(struct device Mosfets[]);
+double Thermal_Noise_Calc(struct device Mosfets[]);
+double Flicker_Noise_Calc(struct device Mosfets[]);
+double Offset_Voltage_input_DueTo_Mismatch_Calc(struct device Mosfets[]);
+void Create_Genocide(int lowerLength, int upperLength,int lowerIC,int upperIC,int IndextFirstParent,int IndexSecondParent,struct SimpleOTA SimpleOTA_Designs[],int NumberOfChilds);
+double Input_Capacitance_Calc(struct device Mosfets[]);
+double Output_Capacitance_Calc(struct device Mosfets[]);
+double Slew_Rate_Calc(double COUT,double Ibias);
+double VINCM_Plus_Calc(struct device Mosfets[]);
+double VINCM_Minus_Calc(struct device Mosfets[]);
+double Maximun_Output_Voltage_Calc(struct device Mosfets[]);
+double Minimum_Output_Voltage_Calc(struct device Mosfets[]);
+double Power_Consumption_Calc(double Ibias);
+void Create_new_Generation(int IndextFirstParent,int IndexSecondParent,	struct SimpleOTA SimpleOTA_Designs[],int NumberOfChilds,int lowerIbias,int upperIbias,int lowerLength, int upperLength,int lowerIC,int upperIC);
+void Create_txt_data (struct SimpleOTA Best_Design);
+
+
+int main()
+{
+	
+//Create Figure OF Merit
+	printf("Create Figure of Merit to compare designs\n");
+	printf("Give how much percent you want for each specification. \n\n");
+	
+	int FOM_percent_OTA_VoltageGain;
+	printf("For OTA_VoltageGain:\n");
+	printf("Please enter an integer in Range 0-100: ");
+	while(scanf("%d",&FOM_percent_OTA_VoltageGain) != 1 || FOM_percent_OTA_VoltageGain > 100 || FOM_percent_OTA_VoltageGain < 0 )
+    {
+        printf("\nWrong!!\nPlease enter an integer in Range 1-100: ");
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d%c\n",FOM_percent_OTA_VoltageGain,'%');
+    
+
+	int FOM_percent_OTA_FrequencyResponse;
+	printf("For OTA_FrequencyResponse:\n");
+	printf("Please enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain);
+	while(scanf("%d",&FOM_percent_OTA_FrequencyResponse) != 1 || FOM_percent_OTA_FrequencyResponse > 100-FOM_percent_OTA_VoltageGain || FOM_percent_OTA_FrequencyResponse < 0 )
+    {
+        printf("\nWrong!!\nPlease enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain);
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d%c\n",FOM_percent_OTA_FrequencyResponse,'%');
+    
+	
+	int FOM_percent_OTA_Thermal_Noise;
+	printf("For OTA_Thermal_Noise:\n");
+	printf("Please enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse);
+	while(scanf("%d",&FOM_percent_OTA_Thermal_Noise) != 1 || FOM_percent_OTA_Thermal_Noise > 100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse || FOM_percent_OTA_Thermal_Noise < 0 )
+    {
+        printf("\nWrong!!\nPlease enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse);
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d%c\n",FOM_percent_OTA_Thermal_Noise,'%');
+	
+	
+	int FOM_percent_OTA_Flicker_Noise;
+	printf("For OTA_Flicker_Noise:\n");
+	printf("Please enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise);
+	while(scanf("%d",&FOM_percent_OTA_Flicker_Noise) != 1 || FOM_percent_OTA_Flicker_Noise > 100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise || FOM_percent_OTA_Flicker_Noise < 0 )
+    {
+        printf("\nWrong!!\nPlease enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise);
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d%c\n",FOM_percent_OTA_Flicker_Noise,'%');
+    
+    
+    int FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch;
+	printf("For OTA_Offset_Voltage_input_DueTo_Mismatch:\n");
+	printf("Please enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise-FOM_percent_OTA_Flicker_Noise);
+	while(scanf("%d",&FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch) != 1 || FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch > 100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise-FOM_percent_OTA_Flicker_Noise || FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch < 0 )
+    {
+        printf("\nWrong!!\nPlease enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise-FOM_percent_OTA_Flicker_Noise);
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d%c\n",FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch,'%');
+	
+	
+	int FOM_percent_OTA_Slew_Rate;
+	printf("For OTA_Slew_Rate:\n");
+	printf("Please enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise-FOM_percent_OTA_Flicker_Noise-FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch);
+	while(scanf("%d",&FOM_percent_OTA_Slew_Rate) != 1 || FOM_percent_OTA_Slew_Rate > 100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise-FOM_percent_OTA_Flicker_Noise-FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch || FOM_percent_OTA_Slew_Rate < 0 )
+    {
+        printf("\nWrong!!\nPlease enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise-FOM_percent_OTA_Flicker_Noise-FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch);
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d%c\n",FOM_percent_OTA_Slew_Rate,'%');
+    
+    
+	int FOM_percent_OTA_Input_Voltage_Range;
+	printf("For OTA_Input_Voltage_Range:\n");
+	printf("Please enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise-FOM_percent_OTA_Flicker_Noise-FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch-FOM_percent_OTA_Slew_Rate);
+	while(scanf("%d",&FOM_percent_OTA_Input_Voltage_Range) != 1 || FOM_percent_OTA_Input_Voltage_Range > 100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise-FOM_percent_OTA_Flicker_Noise-FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch-FOM_percent_OTA_Slew_Rate || FOM_percent_OTA_Input_Voltage_Range < 0 )
+    {
+        printf("\nWrong!!\nPlease enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise-FOM_percent_OTA_Flicker_Noise-FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch-FOM_percent_OTA_Slew_Rate);
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d%c\n",FOM_percent_OTA_Input_Voltage_Range,'%');
+    
+    
+    int FOM_percent_OTA_Output_Voltage_Range;
+	printf("For OTA_Output_Voltage_Range:\n");
+	printf("Please enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise-FOM_percent_OTA_Flicker_Noise-FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch-FOM_percent_OTA_Slew_Rate-FOM_percent_OTA_Input_Voltage_Range);
+	while(scanf("%d",&FOM_percent_OTA_Output_Voltage_Range) != 1 || FOM_percent_OTA_Output_Voltage_Range > 100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise-FOM_percent_OTA_Flicker_Noise-FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch-FOM_percent_OTA_Slew_Rate-FOM_percent_OTA_Input_Voltage_Range || FOM_percent_OTA_Output_Voltage_Range < 0 )
+    {
+        printf("\nWrong!!\nPlease enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise-FOM_percent_OTA_Flicker_Noise-FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch-FOM_percent_OTA_Slew_Rate-FOM_percent_OTA_Input_Voltage_Range);
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d%c\n",FOM_percent_OTA_Output_Voltage_Range,'%');
+    
+    
+    int FOM_percent_OTA_PhaseMargin;
+	printf("For OTA_PhaseMargin:\n");
+	printf("Please enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise-FOM_percent_OTA_Flicker_Noise-FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch-FOM_percent_OTA_Slew_Rate-FOM_percent_OTA_Input_Voltage_Range-FOM_percent_OTA_Output_Voltage_Range);
+	while(scanf("%d",&FOM_percent_OTA_PhaseMargin) != 1 || FOM_percent_OTA_PhaseMargin > 100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise-FOM_percent_OTA_Flicker_Noise-FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch-FOM_percent_OTA_Slew_Rate-FOM_percent_OTA_Input_Voltage_Range-FOM_percent_OTA_Output_Voltage_Range || FOM_percent_OTA_PhaseMargin < 0 )
+    {
+        printf("\nWrong!!\nPlease enter an integer in Range 0-%d: ",100-FOM_percent_OTA_VoltageGain-FOM_percent_OTA_FrequencyResponse-FOM_percent_OTA_Thermal_Noise-FOM_percent_OTA_Flicker_Noise-FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch-FOM_percent_OTA_Slew_Rate-FOM_percent_OTA_Input_Voltage_Range-FOM_percent_OTA_Output_Voltage_Range);
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d%c\n",FOM_percent_OTA_PhaseMargin,'%');
+    
+	//Pick Mode Type
+		
+	printf("\n\nPick Mode Type\nIF Mode == 0 : Create Figure of Merit (FOM) as a percentage of the specs");
+	int Mode;   
+    printf("\nPlease Pick a Mode: ");
+    while(scanf("%d",&Mode) != 1 || Mode > 0 || Mode < 0 )
+    {
+        printf("\nWrong!!Please Pick a Mode: ");
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d\n",Mode);
+    
+   	//Pick The Lowest Length for the Design
+	int Lowest_Length;
+	printf("\n\nPick The Lowest Length for the Design");
+	printf("\nPlease enter an integer equal or greater than 250 (it will be converted in nm): ");
+    while(scanf("%d",&Lowest_Length) != 1 || Lowest_Length < 250)
+    {
+        printf("\nWrong!!\nPlease enter an integer equal or greater than 250 (it will be converted in nm): ");
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d\n",Lowest_Length);
+    
+   	//Pick The Highest_Length for the Design
+   	int Highest_Length;
+	printf("\n\nPick The Highest Length for the Design");
+	printf("\nPlease enter an integer greater than Lowest Length (it will be converted in nm): ");
+    while(scanf("%d",&Highest_Length) != 1 || Highest_Length <= Lowest_Length)
+    {
+        printf("\nWrong!!\nPlease enter an integer greater than Lowest Length (it will be converted in nm): ");
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d\n",Highest_Length);
+    
+    
+    
+   	//Pick The Lowest IC for the Design
+	int Lowest_IC;
+	printf("\n\nPick The Lowest IC for the Design");
+	printf("\nPlease enter an integer equal or greater than 1 : ");
+    while(scanf("%d",&Lowest_IC) != 1 || Lowest_IC < 1)
+    {
+        printf("\nPlease enter an integer equal or greater than 1 : ");
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d\n",Lowest_IC);
+    
+   	//Pick The Highest_IC for the Design
+   	int Highest_IC;
+	printf("\n\nPick The Highest_IC for the Design");
+	printf("\nPlease enter an integer greater than Lowest IC : ");
+    while(scanf("%d",&Highest_IC) != 1 || Highest_IC <= Lowest_IC)
+    {
+        printf("\nPlease enter an integer greater than Lowest IC : ");
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d\n",Highest_IC);
+    
+
+	//Pick the Number of childs 
+	int NumberOfChilds;
+	printf("\n\nPick the Number Of Childs for the Genetic Algorithm");
+	printf("\nPlease enter an integer in Range 1-2000: ");
+    while(scanf("%d",&NumberOfChilds) != 1 || NumberOfChilds > 2000 || NumberOfChilds < 1)
+    {
+        printf("\nWrong!!\nPlease enter an integer in Range 1-2000: ");
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d\n",NumberOfChilds);
+	
+	
+	//Pick How many generations will be created
+	int Step = 0;
+	int Number_Of_generation;
+	printf("\n\nHow many generations you want to create ???");
+	printf("\nPlease enter a positive integer: ");
+    while(scanf("%d",&Number_Of_generation) != 1 || Number_Of_generation < 1)
+    {
+        printf("\nWrong!!\nPlease enter a positive integer: ");
+        while(getchar() != '\n');
+    }
+    printf("You entered: %d\n",Number_Of_generation);
+	
+	
+	
+	
+
+	
+	
+	
+	struct SimpleOTA SimpleOTA_Designs[NumberOfChilds];
+	struct SimpleOTA Best_Design;
+	struct SimpleOTA Pre_Last_Parent_Design;
+	printf("SimpleOTA_Designs's length:%d\n",sizeof(SimpleOTA_Designs)/sizeof(SimpleOTA));
+
+// initialize SimpleOTA Designs
+	    
+		// Use current time as  
+    	// seed for random generator 
+    	srand(time(0));
+		
+		int i;
+		for (i=0;i<sizeof(SimpleOTA_Designs)/sizeof(SimpleOTA);i++){
+			
+			//Generate Random numbers for Length and ICs for a design (1st two:Range for L in nanometers || 2nd two:Range for IC || 3rd two:Range for Ibias in uA)
+			Generate_Randoms(Lowest_Length,Highest_Length,Lowest_IC,Highest_IC,20,50,SimpleOTA_Designs[i].Mosfets,&(SimpleOTA_Designs[i].Ibias));
+			
+			//Initialize_TypeDevices for each Design
+			Initialize_TypeDevices(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate Mosfets Parameters for each design  ( Calculate_Mosfets_Parameters(struct device Mosfets[],double Ibias) )
+			Calculate_Mosfets_Parameters(SimpleOTA_Designs[i].Mosfets,SimpleOTA_Designs[i].Ibias);
+			printf("\n");
+		}
+		
+
+		
+		//test print for initialization and Parameters Calculations
+		int j;
+		for (i=0;i<sizeof(SimpleOTA_Designs)/sizeof(SimpleOTA);i++){
+			printf("\nFor Design:%d\n",i);
+			printf("Ibias:%g\n",SimpleOTA_Designs[i].Ibias);
+			for (j=0;j<10;j++){
+				printf("L%d:%g ",j,(double) SimpleOTA_Designs[i].Mosfets[j].L);
+				printf("IC%d:%g ",j,(double) SimpleOTA_Designs[i].Mosfets[j].IC);
+				
+				printf("W%d:%g ",j,(double) SimpleOTA_Designs[i].Mosfets[j].W);
+				printf("Thermal_noise_factor%d:%g ",j,SimpleOTA_Designs[i].Mosfets[j].Thermal_noise_factor);
+				printf("gm%d:%g ",j,(double) SimpleOTA_Designs[i].Mosfets[j].gm);
+				printf("u0 %d:%g ",j,(double) SimpleOTA_Designs[i].Mosfets[j].u0);
+				printf("n0 %d:%g ",j,(double) SimpleOTA_Designs[i].Mosfets[j].n0);
+				printf("Io %d:%g ",j,(double) SimpleOTA_Designs[i].Mosfets[j].Io);
+				printf("\n"); 
+			}
+		}
+
+
+// Calculate Specs For each OTA
+		for (i=0;i<sizeof(SimpleOTA_Designs)/sizeof(SimpleOTA);i++){
+			//Calculate Transconductance (GM) for each Design {Transconductance_Calc(int Ibias,double IC1)}
+			SimpleOTA_Designs[i].OTA_Transconductance = Transconductance_Calc(SimpleOTA_Designs[i].Ibias,SimpleOTA_Designs[i].Mosfets[0].IC);
+			
+			//Calculate OutputResistance (Rout) for each Design {OutputResistance_Calc(double L4,double L6,double Ibias)}
+			SimpleOTA_Designs[i].OTA_OutputResistance = OutputResistance_Calc(SimpleOTA_Designs[i].Mosfets[3].L,SimpleOTA_Designs[i].Mosfets[5].L,SimpleOTA_Designs[i].Ibias);
+			
+			//Calculate VoltageGain (Av) for each Design {VoltageGain_Calc(double GM,double Rout)}
+			SimpleOTA_Designs[i].OTA_VoltageGain = VoltageGain_Calc(SimpleOTA_Designs[i].OTA_Transconductance,SimpleOTA_Designs[i].OTA_OutputResistance);
+			
+			//Calculate FrequencyResponse (f-3dB) for each Design {FrequencyResponse_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_FrequencyResponse = FrequencyResponse_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate PhaseMargin (PM) for each Design {PhaseMargin_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_PhaseMargin = PhaseMargin_Calc(SimpleOTA_Designs[i].Mosfets);
+					
+			//Calculate ThermalNoise (Svin(thermal)) for each Design {double Thermal_Noise_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_Thermal_Noise = Thermal_Noise_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate FlickerNoise (Svin(flicker)) for each Design {double Flicker_Noise_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_Flicker_Noise = Flicker_Noise_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate Offset_Voltage due to Local-Area Mismatch (Vsquare_InOffset) for each Design {Offset_Voltage_input_DueTo_Mismatch_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_Offset_Voltage_input_DueTo_Mismatch = Offset_Voltage_input_DueTo_Mismatch_Calc(SimpleOTA_Designs[i].Mosfets);
+		
+			//Calculate Input_Capacitance (Cindif) for each Design {Input_Capacitance_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_Input_Capacitance = Input_Capacitance_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate Output_Capacitance (COUT) for each Design {Output_Capacitance_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_Output_Capacitance = Output_Capacitance_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate Slew_Rate (SR) for each Design {Slew_Rate_Calc(double COUT,double Ibias)}
+			SimpleOTA_Designs[i].OTA_Slew_Rate = Slew_Rate_Calc(SimpleOTA_Designs[i].OTA_Output_Capacitance,SimpleOTA_Designs[i].Ibias);
+			
+			// Calculate VINCM_Plus (VINCM+) for each Design  {VINCM_Plus_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_VINCM_Plus = VINCM_Plus_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate VINCM_Minus (VINCM-) for each Design {VINCM_Minus_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_VINCM_Minus = VINCM_Minus_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate Maximun_Output_Voltage (Vout+) for each Design {Maximun_Output_Voltage_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_Maximun_Output_Voltage = Maximun_Output_Voltage_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate Minimum_Output_Voltage (Vout-) for each Design {Minimum_Output_Voltage_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_Minimum_Output_Voltage = Minimum_Output_Voltage_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate Power_Consumption (PC) for each Design {Power_Consumption_Calc(double Ibias)}
+			SimpleOTA_Designs[i].OTA_Power_Consumption = Power_Consumption_Calc(SimpleOTA_Designs[i].Ibias);	
+		}
+		
+		//test print for Specs Calculation
+		for (i=0;i<sizeof(SimpleOTA_Designs)/sizeof(SimpleOTA);i++){
+			printf("\nFor Design:%d\n",i);
+			printf("Ibias:%g\n",SimpleOTA_Designs[i].Ibias);
+			printf("OTA_Transconductance:%g\n",SimpleOTA_Designs[i].OTA_Transconductance);
+			printf("OTA_OutputResistance:%g\n",SimpleOTA_Designs[i].OTA_OutputResistance);
+			printf("OTA_VoltageGain:%g\n",SimpleOTA_Designs[i].OTA_VoltageGain);
+			printf("OTA_FrequencyResponse:%g\n",SimpleOTA_Designs[i].OTA_FrequencyResponse);
+			printf("OTA_PhaseMargin:%g\n",SimpleOTA_Designs[i].OTA_PhaseMargin);
+			printf("OTA_Thermal_Noise:%g\n",SimpleOTA_Designs[i].OTA_Thermal_Noise);
+			printf("OTA_Flicker_Noise:%g\n",SimpleOTA_Designs[i].OTA_Flicker_Noise);
+			printf("OTA_Offset_Voltage due to Local-Area Mismatch:%g",SimpleOTA_Designs[i].OTA_Offset_Voltage_input_DueTo_Mismatch);
+			printf("OTA_Input_Capacitance:%g",SimpleOTA_Designs[i].OTA_Input_Capacitance);
+			printf("OTA_Output_Capacitance:%g",SimpleOTA_Designs[i].OTA_Output_Capacitance);
+			printf("OTA_Slew_Rate:%g",SimpleOTA_Designs[i].OTA_Slew_Rate);
+			printf("OTA_VINCM_Plus:%g",SimpleOTA_Designs[i].OTA_VINCM_Plus);
+			printf("OTA_VINCM_Minus:%g",SimpleOTA_Designs[i].OTA_VINCM_Minus);
+			printf("OTA_Maximun_Output_Voltage:%g",SimpleOTA_Designs[i].OTA_Maximun_Output_Voltage);
+			printf("OTA_Minimum_Output_Voltage:%g",SimpleOTA_Designs[i].OTA_Minimum_Output_Voltage);
+			printf("OTA_Power_Consumption:%g",SimpleOTA_Designs[i].OTA_Power_Consumption);	
+			printf("\n");
+		}
+	
+	
+	int Times_Same_Parents = 0; 
+	int temp_firstParent;
+	int temp_secondParent;
+	int old_temp_firstParent = -1;
+	int old_temp_secondParent = -1;
+	
+	double Max_OTA_VoltageGain_first;
+	double Max_OTA_VoltageGain_second; 
+	double Max_OTA_FrequencyResponse_first;
+	double Max_OTA_FrequencyResponse_second;
+	double Max_OTA_VoltGain_Multi_FreqResponse_first;
+	double Max_OTA_VoltGain_Multi_FreqResponse_second;
+	double Max_OTA_FOM4_first;
+	double Max_OTA_FOM4_second;
+	double Max_OTA_FOM5_first;
+	double Max_OTA_FOM5_second;
+	double Max_OTA_VoltageGain_devided_OTA_Power_Consumption_first;
+	double Max_OTA_VoltageGain_devided_OTA_Power_Consumption_second;
+	double Max_OTA_FrequencyResponse_devided_OTA_Power_Consumption_first;
+	double Max_OTA_FrequencyResponse_devided_OTA_Power_Consumption_second;
+	double Max_OTA_FOM8_first;
+	double Max_OTA_FOM8_second;
+	double Max_OTA_FOM9_first; // DC optimize
+	double Max_OTA_FOM9_second; 
+	
+	
+	double norm_OTA_VoltageGain_competitor;
+	double norm_OTA_FrequencyResponse_competitor;
+	double norm_OTA_Thermal_Noise_competitor;
+	double norm_OTA_Flicker_Noise_competitor;
+	double norm_OTA_Offset_Voltage_input_DueTo_Mismatch_competitor;
+	double norm_OTA_Slew_Rate_competitor;
+	double norm_OTA_Input_Voltage_Range_competitor;
+	double norm_OTA_Output_Voltage_Range_competitor;
+	double norm_OTA_PhaseMargin_competitor;
+	double FOM_competitor;
+	
+	double norm_OTA_VoltageGain_first;
+	double norm_OTA_FrequencyResponse_first;
+	double norm_OTA_Thermal_Noise_first;
+	double norm_OTA_Flicker_Noise_first;
+	double norm_OTA_Offset_Voltage_input_DueTo_Mismatch_first;
+	double norm_OTA_Slew_Rate_first;
+	double norm_OTA_Input_Voltage_Range_first;
+	double norm_OTA_Output_Voltage_Range_first;
+	double norm_OTA_PhaseMargin_first;
+	double FOM_first;
+	
+	double norm_OTA_VoltageGain_second;
+	double norm_OTA_FrequencyResponse_second;
+	double norm_OTA_Thermal_Noise_second;
+	double norm_OTA_Flicker_Noise_second;
+	double norm_OTA_Offset_Voltage_input_DueTo_Mismatch_second;
+	double norm_OTA_Slew_Rate_second;
+	double norm_OTA_Input_Voltage_Range_second;
+	double norm_OTA_Output_Voltage_Range_second;
+	double norm_OTA_PhaseMargin_second;
+	double FOM_second;
+	
+	double norm_OTA_VoltageGain_best;
+	double norm_OTA_FrequencyResponse_best;
+	double norm_OTA_Thermal_Noise_best;
+	double norm_OTA_Flicker_Noise_best;
+	double norm_OTA_Offset_Voltage_input_DueTo_Mismatch_best;
+	double norm_OTA_Slew_Rate_best;
+	double norm_OTA_Input_Voltage_Range_best;
+	double norm_OTA_Output_Voltage_Range_best;
+	double norm_OTA_PhaseMargin_best;
+	double FOM_best;
+	
+	// OTA_PhaseMargin
+	//		double OTA_VINCM_Plus;
+	//		double OTA_VINCM_Minus;
+	//		double OTA_Maximun_Output_Voltage;
+	// 		double OTA_Minimum_Output_Voltage;
+
+	do{
+	
+	//Pick Parents
+			if(Mode == 0){
+				
+				//Initialize Temps for Parents
+				temp_firstParent = 0 ;	
+				temp_secondParent = 1 ;
+				
+				//find first Parent
+				//temp_firstParent = 0 ;	
+				for (i=0;i<sizeof(SimpleOTA_Designs)/sizeof(SimpleOTA);i++){
+					// normalization of the characteristics for the first parent (compare to competitor) 
+					norm_OTA_VoltageGain_first = SimpleOTA_Designs[temp_firstParent].OTA_VoltageGain/ ( (SimpleOTA_Designs[temp_firstParent].OTA_VoltageGain + SimpleOTA_Designs[i].OTA_VoltageGain)/2 );
+					norm_OTA_FrequencyResponse_first = SimpleOTA_Designs[temp_firstParent].OTA_FrequencyResponse/ ( (SimpleOTA_Designs[temp_firstParent].OTA_FrequencyResponse + SimpleOTA_Designs[i].OTA_FrequencyResponse)/2 );
+					norm_OTA_Thermal_Noise_first = SimpleOTA_Designs[temp_firstParent].OTA_Thermal_Noise/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Thermal_Noise + SimpleOTA_Designs[i].OTA_Thermal_Noise)/2 );
+					norm_OTA_Flicker_Noise_first = SimpleOTA_Designs[temp_firstParent].OTA_Flicker_Noise/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Flicker_Noise + SimpleOTA_Designs[i].OTA_Flicker_Noise)/2 );
+					norm_OTA_Offset_Voltage_input_DueTo_Mismatch_first = SimpleOTA_Designs[temp_firstParent].OTA_Offset_Voltage_input_DueTo_Mismatch/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Offset_Voltage_input_DueTo_Mismatch + SimpleOTA_Designs[i].OTA_Offset_Voltage_input_DueTo_Mismatch)/2 );
+					norm_OTA_Slew_Rate_first = SimpleOTA_Designs[temp_firstParent].OTA_Slew_Rate/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Slew_Rate + SimpleOTA_Designs[i].OTA_Slew_Rate)/2 );
+					norm_OTA_Input_Voltage_Range_first = (SimpleOTA_Designs[temp_firstParent].OTA_VINCM_Plus-SimpleOTA_Designs[temp_firstParent].OTA_VINCM_Minus)/ ( ((SimpleOTA_Designs[temp_firstParent].OTA_VINCM_Plus-SimpleOTA_Designs[temp_firstParent].OTA_VINCM_Minus) + (SimpleOTA_Designs[i].OTA_VINCM_Plus-SimpleOTA_Designs[i].OTA_VINCM_Minus))/2 );
+					norm_OTA_Output_Voltage_Range_first = (SimpleOTA_Designs[temp_firstParent].OTA_Maximun_Output_Voltage-SimpleOTA_Designs[temp_firstParent].OTA_Minimum_Output_Voltage)/ ( ((SimpleOTA_Designs[temp_firstParent].OTA_Maximun_Output_Voltage-SimpleOTA_Designs[temp_firstParent].OTA_Minimum_Output_Voltage) + (SimpleOTA_Designs[i].OTA_Maximun_Output_Voltage-SimpleOTA_Designs[i].OTA_Minimum_Output_Voltage))/2 );
+					norm_OTA_PhaseMargin_first = SimpleOTA_Designs[temp_firstParent].OTA_PhaseMargin/ ( (SimpleOTA_Designs[temp_firstParent].OTA_PhaseMargin + SimpleOTA_Designs[i].OTA_PhaseMargin)/2 );
+										
+					// normalization of the characteristics for the competitor parent (compare to first) 
+					norm_OTA_VoltageGain_competitor = SimpleOTA_Designs[i].OTA_VoltageGain/ ( (SimpleOTA_Designs[temp_firstParent].OTA_VoltageGain + SimpleOTA_Designs[i].OTA_VoltageGain)/2 );
+					norm_OTA_FrequencyResponse_competitor = SimpleOTA_Designs[i].OTA_FrequencyResponse/ ( (SimpleOTA_Designs[temp_firstParent].OTA_FrequencyResponse + SimpleOTA_Designs[i].OTA_FrequencyResponse)/2 );
+					norm_OTA_Thermal_Noise_competitor = SimpleOTA_Designs[i].OTA_Thermal_Noise/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Thermal_Noise + SimpleOTA_Designs[i].OTA_Thermal_Noise)/2 );
+					norm_OTA_Flicker_Noise_competitor = SimpleOTA_Designs[i].OTA_Flicker_Noise/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Flicker_Noise + SimpleOTA_Designs[i].OTA_Flicker_Noise)/2 );
+					norm_OTA_Offset_Voltage_input_DueTo_Mismatch_competitor = SimpleOTA_Designs[i].OTA_Offset_Voltage_input_DueTo_Mismatch/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Offset_Voltage_input_DueTo_Mismatch + SimpleOTA_Designs[i].OTA_Offset_Voltage_input_DueTo_Mismatch)/2 );
+					norm_OTA_Slew_Rate_competitor = SimpleOTA_Designs[i].OTA_Slew_Rate/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Slew_Rate + SimpleOTA_Designs[i].OTA_Slew_Rate)/2 );
+					norm_OTA_Input_Voltage_Range_competitor = (SimpleOTA_Designs[i].OTA_VINCM_Plus-SimpleOTA_Designs[i].OTA_VINCM_Minus)/ ( ((SimpleOTA_Designs[temp_firstParent].OTA_VINCM_Plus-SimpleOTA_Designs[temp_firstParent].OTA_VINCM_Minus) + (SimpleOTA_Designs[i].OTA_VINCM_Plus-SimpleOTA_Designs[i].OTA_VINCM_Minus))/2 );
+					norm_OTA_Output_Voltage_Range_competitor = (SimpleOTA_Designs[i].OTA_Maximun_Output_Voltage-SimpleOTA_Designs[i].OTA_Minimum_Output_Voltage)/ ( ((SimpleOTA_Designs[temp_firstParent].OTA_Maximun_Output_Voltage-SimpleOTA_Designs[temp_firstParent].OTA_Minimum_Output_Voltage) + (SimpleOTA_Designs[i].OTA_Maximun_Output_Voltage-SimpleOTA_Designs[i].OTA_Minimum_Output_Voltage))/2 );
+					norm_OTA_PhaseMargin_competitor = SimpleOTA_Designs[i].OTA_PhaseMargin/ ( (SimpleOTA_Designs[temp_firstParent].OTA_PhaseMargin + SimpleOTA_Designs[i].OTA_PhaseMargin)/2 );
+					
+					//Calculate FOM for first parent and competitor parent ( Positive specs get plus(+) , Negative specs get minus(-) )
+					FOM_first = norm_OTA_VoltageGain_first*(FOM_percent_OTA_VoltageGain) + norm_OTA_FrequencyResponse_first*(FOM_percent_OTA_FrequencyResponse) - norm_OTA_Thermal_Noise_first*(FOM_percent_OTA_Thermal_Noise) - norm_OTA_Flicker_Noise_first*(FOM_percent_OTA_Flicker_Noise) - norm_OTA_Offset_Voltage_input_DueTo_Mismatch_first*(FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch) + norm_OTA_Slew_Rate_first*(FOM_percent_OTA_Slew_Rate) + norm_OTA_Input_Voltage_Range_first*(FOM_percent_OTA_Input_Voltage_Range) + norm_OTA_Output_Voltage_Range_first*(FOM_percent_OTA_Output_Voltage_Range) + norm_OTA_PhaseMargin_first*(FOM_percent_OTA_PhaseMargin);
+					FOM_competitor = norm_OTA_VoltageGain_competitor*(FOM_percent_OTA_VoltageGain) + norm_OTA_FrequencyResponse_competitor*(FOM_percent_OTA_FrequencyResponse) - norm_OTA_Thermal_Noise_competitor*(FOM_percent_OTA_Thermal_Noise) - norm_OTA_Flicker_Noise_competitor*(FOM_percent_OTA_Flicker_Noise) - norm_OTA_Offset_Voltage_input_DueTo_Mismatch_competitor*(FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch) + norm_OTA_Slew_Rate_competitor*(FOM_percent_OTA_Slew_Rate) + norm_OTA_Input_Voltage_Range_competitor*(FOM_percent_OTA_Input_Voltage_Range) + norm_OTA_Output_Voltage_Range_competitor*(FOM_percent_OTA_Output_Voltage_Range) + norm_OTA_PhaseMargin_competitor*(FOM_percent_OTA_PhaseMargin);
+					
+					if(FOM_first < FOM_competitor ){
+						temp_firstParent = i;
+					}
+				}
+				
+			    //find second Parent
+				//if(temp_firstParent == 0){
+				//	temp_secondParent = 1 ;
+				//}
+				//else{
+				//	temp_secondParent = 0;
+				//}
+			 	for (i=0;i<sizeof(SimpleOTA_Designs)/sizeof(SimpleOTA);i++){
+			 		// normalization of the characteristics for the second parent (compare to competitor) 
+					norm_OTA_VoltageGain_second = SimpleOTA_Designs[temp_secondParent].OTA_VoltageGain/ ( (SimpleOTA_Designs[temp_secondParent].OTA_VoltageGain + SimpleOTA_Designs[i].OTA_VoltageGain)/2 );
+					norm_OTA_FrequencyResponse_second = SimpleOTA_Designs[temp_secondParent].OTA_FrequencyResponse/ ( (SimpleOTA_Designs[temp_secondParent].OTA_FrequencyResponse + SimpleOTA_Designs[i].OTA_FrequencyResponse)/2 );
+					norm_OTA_Thermal_Noise_second = SimpleOTA_Designs[temp_secondParent].OTA_Thermal_Noise/ ( (SimpleOTA_Designs[temp_secondParent].OTA_Thermal_Noise + SimpleOTA_Designs[i].OTA_Thermal_Noise)/2 );
+					norm_OTA_Flicker_Noise_second = SimpleOTA_Designs[temp_secondParent].OTA_Flicker_Noise/ ( (SimpleOTA_Designs[temp_secondParent].OTA_Flicker_Noise + SimpleOTA_Designs[i].OTA_Flicker_Noise)/2 );
+					norm_OTA_Offset_Voltage_input_DueTo_Mismatch_second = SimpleOTA_Designs[temp_secondParent].OTA_Offset_Voltage_input_DueTo_Mismatch/ ( (SimpleOTA_Designs[temp_secondParent].OTA_Offset_Voltage_input_DueTo_Mismatch + SimpleOTA_Designs[i].OTA_Offset_Voltage_input_DueTo_Mismatch)/2 );
+					norm_OTA_Slew_Rate_second = SimpleOTA_Designs[temp_secondParent].OTA_Slew_Rate/ ( (SimpleOTA_Designs[temp_secondParent].OTA_Slew_Rate + SimpleOTA_Designs[i].OTA_Slew_Rate)/2 );
+					norm_OTA_Input_Voltage_Range_second = (SimpleOTA_Designs[temp_secondParent].OTA_VINCM_Plus-SimpleOTA_Designs[temp_secondParent].OTA_VINCM_Minus)/ ( ((SimpleOTA_Designs[temp_secondParent].OTA_VINCM_Plus-SimpleOTA_Designs[temp_secondParent].OTA_VINCM_Minus) + (SimpleOTA_Designs[i].OTA_VINCM_Plus-SimpleOTA_Designs[i].OTA_VINCM_Minus))/2 );
+					norm_OTA_Output_Voltage_Range_second = (SimpleOTA_Designs[temp_secondParent].OTA_Maximun_Output_Voltage-SimpleOTA_Designs[temp_secondParent].OTA_Minimum_Output_Voltage)/ ( ((SimpleOTA_Designs[temp_secondParent].OTA_Maximun_Output_Voltage-SimpleOTA_Designs[temp_secondParent].OTA_Minimum_Output_Voltage) + (SimpleOTA_Designs[i].OTA_Maximun_Output_Voltage-SimpleOTA_Designs[i].OTA_Minimum_Output_Voltage))/2 );
+					norm_OTA_PhaseMargin_second = SimpleOTA_Designs[temp_secondParent].OTA_PhaseMargin/ ( (SimpleOTA_Designs[temp_secondParent].OTA_PhaseMargin + SimpleOTA_Designs[i].OTA_PhaseMargin)/2 );
+					
+					// normalization of the characteristics for the competitor parent (compare to second) 
+					norm_OTA_VoltageGain_competitor = SimpleOTA_Designs[i].OTA_VoltageGain/ ( (SimpleOTA_Designs[temp_secondParent].OTA_VoltageGain + SimpleOTA_Designs[i].OTA_VoltageGain)/2 );
+					norm_OTA_FrequencyResponse_competitor = SimpleOTA_Designs[i].OTA_FrequencyResponse/ ( (SimpleOTA_Designs[temp_secondParent].OTA_FrequencyResponse + SimpleOTA_Designs[i].OTA_FrequencyResponse)/2 );
+					norm_OTA_Thermal_Noise_competitor = SimpleOTA_Designs[i].OTA_Thermal_Noise/ ( (SimpleOTA_Designs[temp_secondParent].OTA_Thermal_Noise + SimpleOTA_Designs[i].OTA_Thermal_Noise)/2 );
+					norm_OTA_Flicker_Noise_competitor = SimpleOTA_Designs[i].OTA_Flicker_Noise/ ( (SimpleOTA_Designs[temp_secondParent].OTA_Flicker_Noise + SimpleOTA_Designs[i].OTA_Flicker_Noise)/2 );
+					norm_OTA_Offset_Voltage_input_DueTo_Mismatch_competitor = SimpleOTA_Designs[i].OTA_Offset_Voltage_input_DueTo_Mismatch/ ( (SimpleOTA_Designs[temp_secondParent].OTA_Offset_Voltage_input_DueTo_Mismatch + SimpleOTA_Designs[i].OTA_Offset_Voltage_input_DueTo_Mismatch)/2 );
+					norm_OTA_Slew_Rate_competitor = SimpleOTA_Designs[i].OTA_Slew_Rate/ ( (SimpleOTA_Designs[temp_secondParent].OTA_Slew_Rate + SimpleOTA_Designs[i].OTA_Slew_Rate)/2 );
+					norm_OTA_Input_Voltage_Range_competitor = (SimpleOTA_Designs[i].OTA_VINCM_Plus-SimpleOTA_Designs[i].OTA_VINCM_Minus)/ ( ((SimpleOTA_Designs[temp_secondParent].OTA_VINCM_Plus-SimpleOTA_Designs[temp_secondParent].OTA_VINCM_Minus) + (SimpleOTA_Designs[i].OTA_VINCM_Plus-SimpleOTA_Designs[i].OTA_VINCM_Minus))/2 );
+					norm_OTA_Output_Voltage_Range_competitor = (SimpleOTA_Designs[i].OTA_Maximun_Output_Voltage-SimpleOTA_Designs[i].OTA_Minimum_Output_Voltage)/ ( ((SimpleOTA_Designs[temp_secondParent].OTA_Maximun_Output_Voltage-SimpleOTA_Designs[temp_secondParent].OTA_Minimum_Output_Voltage) + (SimpleOTA_Designs[i].OTA_Maximun_Output_Voltage-SimpleOTA_Designs[i].OTA_Minimum_Output_Voltage))/2 );
+					norm_OTA_PhaseMargin_competitor = SimpleOTA_Designs[i].OTA_PhaseMargin/ ( (SimpleOTA_Designs[temp_secondParent].OTA_PhaseMargin + SimpleOTA_Designs[i].OTA_PhaseMargin)/2 );
+					
+					//Calculate FOM for first parent and competitor parent (sum all normilized values)
+					FOM_second = norm_OTA_VoltageGain_second*(FOM_percent_OTA_VoltageGain) + norm_OTA_FrequencyResponse_second*(FOM_percent_OTA_FrequencyResponse) - norm_OTA_Thermal_Noise_second*(FOM_percent_OTA_Thermal_Noise) - norm_OTA_Flicker_Noise_second*(FOM_percent_OTA_Flicker_Noise) - norm_OTA_Offset_Voltage_input_DueTo_Mismatch_second*(FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch) + norm_OTA_Slew_Rate_second*(FOM_percent_OTA_Slew_Rate) + norm_OTA_Input_Voltage_Range_second*(FOM_percent_OTA_Input_Voltage_Range) + norm_OTA_Output_Voltage_Range_second*(FOM_percent_OTA_Output_Voltage_Range) + norm_OTA_PhaseMargin_second*(FOM_percent_OTA_PhaseMargin);
+					FOM_competitor = norm_OTA_VoltageGain_competitor*(FOM_percent_OTA_VoltageGain) + norm_OTA_FrequencyResponse_competitor*(FOM_percent_OTA_FrequencyResponse) - norm_OTA_Thermal_Noise_competitor*(FOM_percent_OTA_Thermal_Noise) - norm_OTA_Flicker_Noise_competitor*(FOM_percent_OTA_Flicker_Noise) - norm_OTA_Offset_Voltage_input_DueTo_Mismatch_competitor*(FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch) + norm_OTA_Slew_Rate_competitor*(FOM_percent_OTA_Slew_Rate) + norm_OTA_Input_Voltage_Range_competitor*(FOM_percent_OTA_Input_Voltage_Range) + norm_OTA_Output_Voltage_Range_competitor*(FOM_percent_OTA_Output_Voltage_Range) + norm_OTA_PhaseMargin_competitor*(FOM_percent_OTA_PhaseMargin);
+					
+			 		
+					if((FOM_second < FOM_competitor) && i!=temp_firstParent){
+						temp_secondParent = i;
+					}
+				}
+				
+				//initialize the best design (when step == 0),pick new best_parent if firstparent is better.
+				if(Step == 0 ){
+					Best_Design = SimpleOTA_Designs[temp_firstParent];
+					Pre_Last_Parent_Design = SimpleOTA_Designs[temp_firstParent];
+				}
+				else{
+					// normalization of the characteristics for the best parent (compare to first)
+					norm_OTA_VoltageGain_best = Best_Design.OTA_VoltageGain/ ( (SimpleOTA_Designs[temp_firstParent].OTA_VoltageGain + Best_Design.OTA_VoltageGain)/2 );
+					norm_OTA_FrequencyResponse_best = Best_Design.OTA_FrequencyResponse/ ( (SimpleOTA_Designs[temp_firstParent].OTA_FrequencyResponse + Best_Design.OTA_FrequencyResponse)/2 );
+					norm_OTA_Thermal_Noise_best = Best_Design.OTA_Thermal_Noise/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Thermal_Noise + Best_Design.OTA_Thermal_Noise)/2 );
+					norm_OTA_Flicker_Noise_best = Best_Design.OTA_Flicker_Noise/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Flicker_Noise + Best_Design.OTA_Flicker_Noise)/2 );
+					norm_OTA_Offset_Voltage_input_DueTo_Mismatch_best = Best_Design.OTA_Offset_Voltage_input_DueTo_Mismatch/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Offset_Voltage_input_DueTo_Mismatch +Best_Design.OTA_Offset_Voltage_input_DueTo_Mismatch)/2 );
+					norm_OTA_Slew_Rate_best = Best_Design.OTA_Slew_Rate/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Slew_Rate + Best_Design.OTA_Slew_Rate)/2 );
+					norm_OTA_Input_Voltage_Range_best = (Best_Design.OTA_VINCM_Plus-Best_Design.OTA_VINCM_Minus)/ ( ((SimpleOTA_Designs[temp_firstParent].OTA_VINCM_Plus-SimpleOTA_Designs[temp_firstParent].OTA_VINCM_Minus) + (Best_Design.OTA_VINCM_Plus-Best_Design.OTA_VINCM_Minus))/2 );
+					norm_OTA_Output_Voltage_Range_best = (Best_Design.OTA_Maximun_Output_Voltage-Best_Design.OTA_Minimum_Output_Voltage)/ ( ((SimpleOTA_Designs[temp_firstParent].OTA_Maximun_Output_Voltage-SimpleOTA_Designs[temp_firstParent].OTA_Minimum_Output_Voltage) + (Best_Design.OTA_Maximun_Output_Voltage-Best_Design.OTA_Minimum_Output_Voltage))/2 );
+					norm_OTA_PhaseMargin_best = Best_Design.OTA_PhaseMargin/ ( (SimpleOTA_Designs[temp_firstParent].OTA_PhaseMargin + Best_Design.OTA_PhaseMargin)/2 );
+					
+					// normalization of the characteristics for the first parent (compare to best)
+					norm_OTA_VoltageGain_first = SimpleOTA_Designs[temp_firstParent].OTA_VoltageGain/ ( (SimpleOTA_Designs[temp_firstParent].OTA_VoltageGain + Best_Design.OTA_VoltageGain)/2 );
+					norm_OTA_FrequencyResponse_first = SimpleOTA_Designs[temp_firstParent].OTA_FrequencyResponse/ ( (SimpleOTA_Designs[temp_firstParent].OTA_FrequencyResponse + Best_Design.OTA_FrequencyResponse)/2 );
+					norm_OTA_Thermal_Noise_first = SimpleOTA_Designs[temp_firstParent].OTA_Thermal_Noise/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Thermal_Noise + Best_Design.OTA_Thermal_Noise)/2 );
+					norm_OTA_Flicker_Noise_first = SimpleOTA_Designs[temp_firstParent].OTA_Flicker_Noise/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Flicker_Noise + Best_Design.OTA_Flicker_Noise)/2 );
+					norm_OTA_Offset_Voltage_input_DueTo_Mismatch_first = SimpleOTA_Designs[temp_firstParent].OTA_Offset_Voltage_input_DueTo_Mismatch/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Offset_Voltage_input_DueTo_Mismatch + Best_Design.OTA_Offset_Voltage_input_DueTo_Mismatch)/2 );
+					norm_OTA_Slew_Rate_first = SimpleOTA_Designs[temp_firstParent].OTA_Slew_Rate/ ( (SimpleOTA_Designs[temp_firstParent].OTA_Slew_Rate + Best_Design.OTA_Slew_Rate)/2 );
+					norm_OTA_Input_Voltage_Range_first = (SimpleOTA_Designs[temp_firstParent].OTA_VINCM_Plus-SimpleOTA_Designs[temp_firstParent].OTA_VINCM_Minus)/ ( ((SimpleOTA_Designs[temp_firstParent].OTA_VINCM_Plus-SimpleOTA_Designs[temp_firstParent].OTA_VINCM_Minus) + (Best_Design.OTA_VINCM_Plus-Best_Design.OTA_VINCM_Minus))/2 );
+					norm_OTA_Output_Voltage_Range_first = (SimpleOTA_Designs[temp_firstParent].OTA_Maximun_Output_Voltage-SimpleOTA_Designs[temp_firstParent].OTA_Minimum_Output_Voltage)/ ( ((SimpleOTA_Designs[temp_firstParent].OTA_Maximun_Output_Voltage-SimpleOTA_Designs[temp_firstParent].OTA_Minimum_Output_Voltage) + (Best_Design.OTA_Maximun_Output_Voltage-Best_Design.OTA_Minimum_Output_Voltage))/2 );
+					norm_OTA_PhaseMargin_first = SimpleOTA_Designs[temp_firstParent].OTA_PhaseMargin/ ( (SimpleOTA_Designs[temp_firstParent].OTA_PhaseMargin + Best_Design.OTA_PhaseMargin)/2 );
+					
+					//Calculate FOM for first parent and Best parent ( Positive specs get plus(+) , Negative specs get minus(-) )
+					FOM_first = norm_OTA_VoltageGain_first*(FOM_percent_OTA_VoltageGain) + norm_OTA_FrequencyResponse_first*(FOM_percent_OTA_FrequencyResponse) - norm_OTA_Thermal_Noise_first*(FOM_percent_OTA_Thermal_Noise) - norm_OTA_Flicker_Noise_first*(FOM_percent_OTA_Flicker_Noise) - norm_OTA_Offset_Voltage_input_DueTo_Mismatch_first*(FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch) + norm_OTA_Slew_Rate_first*(FOM_percent_OTA_Slew_Rate) + norm_OTA_Input_Voltage_Range_first*(FOM_percent_OTA_Input_Voltage_Range) + norm_OTA_Output_Voltage_Range_first*(FOM_percent_OTA_Output_Voltage_Range) + norm_OTA_PhaseMargin_first*(FOM_percent_OTA_PhaseMargin);
+					FOM_best = norm_OTA_VoltageGain_best*(FOM_percent_OTA_VoltageGain) + norm_OTA_FrequencyResponse_best*(FOM_percent_OTA_FrequencyResponse) - norm_OTA_Thermal_Noise_best*(FOM_percent_OTA_Thermal_Noise) - norm_OTA_Flicker_Noise_best*(FOM_percent_OTA_Flicker_Noise) - norm_OTA_Offset_Voltage_input_DueTo_Mismatch_best*(FOM_percent_OTA_Offset_Voltage_input_DueTo_Mismatch) + norm_OTA_Slew_Rate_best*(FOM_percent_OTA_Slew_Rate) + norm_OTA_Input_Voltage_Range_best*(FOM_percent_OTA_Input_Voltage_Range) + norm_OTA_Output_Voltage_Range_best*(FOM_percent_OTA_Output_Voltage_Range) + norm_OTA_PhaseMargin_best*(FOM_percent_OTA_PhaseMargin);
+					
+					if(FOM_best < FOM_first ){
+						Best_Design = SimpleOTA_Designs[temp_firstParent];
+					}
+					Pre_Last_Parent_Design = SimpleOTA_Designs[temp_firstParent];
+					 
+				}
+				
+				
+			}
+			
+			
+			
+		printf(" \n %d %d",temp_firstParent,temp_secondParent);
+		
+		//Create Next Generation from parents with IDs temp_firstParent and temp_secondParent   
+		//{Create_new_Generation(int IndextFirstParent,int IndexSecondParent,	struct SimpleOTA SimpleOTA_Designs[],int NumberOfChilds,int lowerIbias,int upperIbias,int lowerLength, int upperLength,int lowerIC,int upperIC)}
+		int NumberOfChilds = sizeof(SimpleOTA_Designs)/sizeof(SimpleOTA) ; 
+		Create_new_Generation(temp_firstParent,temp_secondParent,SimpleOTA_Designs,NumberOfChilds,20,50,Lowest_Length,Highest_Length,Lowest_IC,Highest_IC);
+		
+		
+		//Make a Genocide if we have the same parents 10 times !!! (We dont like oligarchy ^_^ ) 		
+				//Counting how many times we have the same Parents
+		if(old_temp_firstParent == temp_firstParent && old_temp_secondParent == temp_secondParent ){
+			Times_Same_Parents = Times_Same_Parents+1;
+		}
+		if(Times_Same_Parents > 25){
+			Times_Same_Parents = 0;				
+			//{Create_Genocide(int lowerLength, int upperLength,int lowerIC,int upperIC,int IndextFirstParent,int IndexSecondParent,struct SimpleOTA SimpleOTA_Designs[],int NumberOfChilds)}
+			//Create_Genocide(Lowest_Length,Highest_Length,Lowest_IC,Highest_IC,temp_firstParent,temp_secondParent,SimpleOTA_Designs,NumberOfChilds);			
+		}
+		
+		
+		//for (i=0;i<sizeof(SimpleOTA_Designs)/sizeof(SimpleOTA);i++){
+		//	Calculate_Mosfets_Parameters(SimpleOTA_Designs[i].Mosfets,SimpleOTA_Designs[i].Ibias);  !! MALLON DEN XRIAZETE !!
+		//}
+		//Test print for new Generation
+		printf("\nGeneration Number : %d\n",Step+1);
+		for (i=0;i<sizeof(SimpleOTA_Designs)/sizeof(SimpleOTA);i++){
+			printf("\nIbias Design%d :%g\n",i,SimpleOTA_Designs[i].Ibias);
+			for (j=0;j<10;j++){
+				printf("L%d:%g ",j,(double) SimpleOTA_Designs[i].Mosfets[j].L);
+				printf("IC%d:%g ",j,(double) SimpleOTA_Designs[i].Mosfets[j].IC);
+				
+				printf("W%d:%g ",j,(double) SimpleOTA_Designs[i].Mosfets[j].W);
+				printf("u0 %d:%g ",j,(double) SimpleOTA_Designs[i].Mosfets[j].u0);
+				printf("n0 %d:%g ",j,(double) SimpleOTA_Designs[i].Mosfets[j].n0);
+				printf("Io %d:%g ",j,(double) SimpleOTA_Designs[i].Mosfets[j].Io);
+				printf("\n"); 
+			}
+			
+			
+		}
+		
+	//	//Test print before Calculations (New Generation)	
+	//	for (i=0;i<sizeof(SimpleOTA_Designs)/sizeof(SimpleOTA);i++){
+	//		printf("\nVoltageGain Design%d :%g\n",i,SimpleOTA_Designs[i].OTA_VoltageGain);
+	//		printf("\nFrequencyResponse Design%d :%g\n",i,SimpleOTA_Designs[i].OTA_FrequencyResponse);
+	//	}
+	
+		// Calculate Specs For each OTA for the new Generation !!!
+		for (i=0;i<sizeof(SimpleOTA_Designs)/sizeof(SimpleOTA);i++){
+			//Calculate Transconductance (GM) for each Design {Transconductance_Calc(int Ibias,double IC1)}
+			SimpleOTA_Designs[i].OTA_Transconductance = Transconductance_Calc(SimpleOTA_Designs[i].Ibias,SimpleOTA_Designs[i].Mosfets[0].IC);
+			
+			//Calculate OutputResistance (Rout) for each Design {OutputResistance_Calc(double L4,double L6,double Ibias)}
+			SimpleOTA_Designs[i].OTA_OutputResistance = OutputResistance_Calc(SimpleOTA_Designs[i].Mosfets[3].L,SimpleOTA_Designs[i].Mosfets[5].L,SimpleOTA_Designs[i].Ibias);
+			
+			//Calculate VoltageGain (Av) for each Design {VoltageGain_Calc(double GM,double Rout)}
+			SimpleOTA_Designs[i].OTA_VoltageGain = VoltageGain_Calc(SimpleOTA_Designs[i].OTA_Transconductance,SimpleOTA_Designs[i].OTA_OutputResistance);
+			
+			//Calculate FrequencyResponse (f-3dB) for each Design  {double FrequencyResponse_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_FrequencyResponse = FrequencyResponse_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate PhaseMargin (PM) for each Design {PhaseMargin_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_PhaseMargin = PhaseMargin_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate ThermalNoise (Svin(thermal)) for each Design {double Thermal_Noise_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_Thermal_Noise = Thermal_Noise_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate FlickerNoise (Svin(flicker)) for each Design {double Flicker_Noise_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_Flicker_Noise = Flicker_Noise_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate Offset_Voltage due to Local-Area Mismatch (Vsquare_InOffset) {Offset_Voltage_input_DueTo_Mismatch_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_Offset_Voltage_input_DueTo_Mismatch = Offset_Voltage_input_DueTo_Mismatch_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate Input_Capacitance (Cindif) for each Design {Input_Capacitance_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_Input_Capacitance = Input_Capacitance_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate Output_Capacitance (COUT) for each Design {Output_Capacitance_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_Output_Capacitance = Output_Capacitance_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate Slew_Rate (SR) for each Design {Slew_Rate_Calc(double COUT,double Ibias)}
+			SimpleOTA_Designs[i].OTA_Slew_Rate = Slew_Rate_Calc(SimpleOTA_Designs[i].OTA_Output_Capacitance,SimpleOTA_Designs[i].Ibias);
+			
+			// Calculate VINCM_Plus (VINCM+) for each Design  {VINCM_Plus_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_VINCM_Plus = VINCM_Plus_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate VINCM_Minus (VINCM-) for each Design {VINCM_Minus_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_VINCM_Minus = VINCM_Minus_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate Maximun_Output_Voltage (Vout+) for each Design {Maximun_Output_Voltage_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_Maximun_Output_Voltage = Maximun_Output_Voltage_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate Minimum_Output_Voltage (Vout-) for each Design {Minimum_Output_Voltage_Calc(struct device Mosfets[])}
+			SimpleOTA_Designs[i].OTA_Minimum_Output_Voltage = Minimum_Output_Voltage_Calc(SimpleOTA_Designs[i].Mosfets);
+			
+			//Calculate Power_Consumption (PC) for each Design {Power_Consumption_Calc(double Ibias)}
+			SimpleOTA_Designs[i].OTA_Power_Consumption = Power_Consumption_Calc(SimpleOTA_Designs[i].Ibias);
+		}
+		
+		//Test print after Calculations (New Generation)	
+		printf("\n\n\n");
+		for (i=0;i<sizeof(SimpleOTA_Designs)/sizeof(SimpleOTA);i++){
+			printf("\nVoltageGain Design%d :%g\n",i,SimpleOTA_Designs[i].OTA_VoltageGain);
+			printf("\nFrequencyResponse Design%d :%g\n",i,SimpleOTA_Designs[i].OTA_FrequencyResponse);
+			printf("\nPhaseMargin Design%d :%g\n",i,SimpleOTA_Designs[i].OTA_PhaseMargin);
+			printf("\nFrequencyResponse*nVoltageGain Design%d :%g\n",i,(SimpleOTA_Designs[i].OTA_FrequencyResponse)*(SimpleOTA_Designs[i].OTA_VoltageGain));
+			printf("\n\tThermal_Noise Design%d :%g",i,SimpleOTA_Designs[i].OTA_Thermal_Noise);
+			printf("\n\tFlicker_Noise Design%d :%g",i,SimpleOTA_Designs[i].OTA_Flicker_Noise);
+			printf("\n\tOffset_Voltage due to Local-Area Mismatch Design%d :%g",i,SimpleOTA_Designs[i].OTA_Offset_Voltage_input_DueTo_Mismatch);
+			printf("\n\tInput_Capacitance Design%d :%g",i,SimpleOTA_Designs[i].OTA_Input_Capacitance);
+			printf("\n\tOutput_Capacitance Design%d :%g",i,SimpleOTA_Designs[i].OTA_Output_Capacitance);
+			printf("\n\tSlew_Rate Design%d :%g",i,SimpleOTA_Designs[i].OTA_Slew_Rate);
+			printf("\n\tVINCM_Plus Design%d :%g",i,SimpleOTA_Designs[i].OTA_VINCM_Plus);
+			printf("\n\tVINCM_Minus Design%d :%g",i,SimpleOTA_Designs[i].OTA_VINCM_Minus);
+			printf("\n\tMaximun_Output_Voltage Design%d :%g",i,SimpleOTA_Designs[i].OTA_Maximun_Output_Voltage);
+			printf("\n\tMinimun_Output_Voltage Design%d :%g",i,SimpleOTA_Designs[i].OTA_Minimum_Output_Voltage);
+			printf("\n\tPower_Consumption Design%d :%g",i,SimpleOTA_Designs[i].OTA_Power_Consumption);
+		}
+		
+		old_temp_firstParent=temp_firstParent;
+		old_temp_secondParent=temp_secondParent;
+		Step = Step+1;
+		printf("\n\nTimes_Same_Parents:%d\n\n",Times_Same_Parents);
+	}while(Step < Number_Of_generation);   //Here we declare the number of Generations that will be created.
+	
+	
+	//Print the Pre_last first parent design Calculations.	
+	printf("\n\n\nPre_Last first Parent design's Specs:\n");
+	printf("\n\tIbias :%g",Pre_Last_Parent_Design.Ibias);
+	printf("\n\tVoltageGain :%g",Pre_Last_Parent_Design.OTA_VoltageGain);
+	printf("\n\tFrequencyResponse (Hz) :%g",Pre_Last_Parent_Design.OTA_FrequencyResponse);
+	printf("\n\tPhaseMargin (degrees) :%g",Pre_Last_Parent_Design.OTA_PhaseMargin);
+	printf("\n\tFrequencyResponse*nVoltageGain :%g",(Pre_Last_Parent_Design.OTA_FrequencyResponse)*(Pre_Last_Parent_Design.OTA_VoltageGain));
+	printf("\n\tThermal_Noise (joule*Ohm) :%g",Pre_Last_Parent_Design.OTA_Thermal_Noise);
+	printf("\n\tFlicker_Noise (Volts^2) :%g",Pre_Last_Parent_Design.OTA_Flicker_Noise);
+	printf("\n\tOffset_Voltage due to Local-Area Mismatch (mV^2):%g",Pre_Last_Parent_Design.OTA_Offset_Voltage_input_DueTo_Mismatch);
+	printf("\n\tInput_Capacitance (ff):%g",Pre_Last_Parent_Design.OTA_Input_Capacitance);
+	printf("\n\tOutput_Capacitance (ff):%g",Pre_Last_Parent_Design.OTA_Output_Capacitance);
+	printf("\n\tSlew_Rate (uA/ff):%g",Pre_Last_Parent_Design.OTA_Slew_Rate);
+	printf("\n\tVINCM_Plus (Volts):%g",Pre_Last_Parent_Design.OTA_VINCM_Plus);
+	printf("\n\tVINCM_Minus (Volts):%g",Pre_Last_Parent_Design.OTA_VINCM_Minus);
+	printf("\n\tMaximun_Output_Voltage (Volts):%g",Pre_Last_Parent_Design.OTA_Maximun_Output_Voltage);
+	printf("\n\tMinimun_Output_Voltage (Volts):%g",Pre_Last_Parent_Design.OTA_Minimum_Output_Voltage);
+	printf("\n\tPower_Consumption(uWatts):%g",Pre_Last_Parent_Design.OTA_Power_Consumption);
+	printf("\n\nBest Design characteristics:\n");
+	for (j=0;j<10;j++){
+		printf("L%d:%g ",j,(double) Pre_Last_Parent_Design.Mosfets[j].L);
+		printf("IC%d:%g ",j,(double) Pre_Last_Parent_Design.Mosfets[j].IC);
+				
+		printf("W%d:%g ",j,(double) Pre_Last_Parent_Design.Mosfets[j].W);
+		printf("Thermal_noise_factor%d:%g ",j,Pre_Last_Parent_Design.Mosfets[j].Thermal_noise_factor);
+		printf("gm%d:%g ",j,(double) Pre_Last_Parent_Design.Mosfets[j].gm);
+		printf("u0 %d:%g ",j,(double) Pre_Last_Parent_Design.Mosfets[j].u0);
+		printf("n0 %d:%g ",j,(double) Pre_Last_Parent_Design.Mosfets[j].n0);
+		printf("Io %d:%g ",j,(double) Pre_Last_Parent_Design.Mosfets[j].Io);
+		printf("KF %d:%g ",j,(double) Pre_Last_Parent_Design.Mosfets[j].KF);
+		printf("AF %d:%g ",j,(double) Pre_Last_Parent_Design.Mosfets[j].AF);
+		printf("AVTO %d:%g ",j,(double) Pre_Last_Parent_Design.Mosfets[j].AVTO);
+		printf("VT %d:%g(V) ",j,(double) Pre_Last_Parent_Design.Mosfets[j].VT);
+		printf("\n"); 
+		}
+		
+	//Print the best design Calculations.	
+	printf("\n\n\nBest design's Specs:\n");
+	printf("\n\tIbias :%g",Best_Design.Ibias);
+	printf("\n\tVoltageGain :%g",Best_Design.OTA_VoltageGain);
+	printf("\n\tFrequencyResponse (Hz) :%g",Best_Design.OTA_FrequencyResponse);
+	printf("\n\tPhaseMargin (degrees) :%g",Best_Design.OTA_PhaseMargin);
+	printf("\n\tFrequencyResponse*nVoltageGain :%g",(Best_Design.OTA_FrequencyResponse)*(Best_Design.OTA_VoltageGain));
+	printf("\n\tThermal_Noise (joule*Ohm) :%g",Best_Design.OTA_Thermal_Noise);
+	printf("\n\tFlicker_Noise (Volts^2) :%g",Best_Design.OTA_Flicker_Noise);
+	printf("\n\tOffset_Voltage due to Local-Area Mismatch (mV^2):%g",Best_Design.OTA_Offset_Voltage_input_DueTo_Mismatch);
+	printf("\n\tInput_Capacitance (ff):%g",Best_Design.OTA_Input_Capacitance);
+	printf("\n\tOutput_Capacitance (ff):%g",Best_Design.OTA_Output_Capacitance);
+	printf("\n\tSlew_Rate (uA/ff):%g",Best_Design.OTA_Slew_Rate);
+	printf("\n\tVINCM_Plus (Volts):%g",Best_Design.OTA_VINCM_Plus);
+	printf("\n\tVINCM_Minus (Volts):%g",Best_Design.OTA_VINCM_Minus);
+	printf("\n\tMaximun_Output_Voltage (Volts):%g",Best_Design.OTA_Maximun_Output_Voltage);
+	printf("\n\tMinimun_Output_Voltage (Volts):%g",Best_Design.OTA_Minimum_Output_Voltage);
+	printf("\n\tPower_Consumption(uWatts):%g",Best_Design.OTA_Power_Consumption);
+	printf("\n\nBest Design characteristics:\n");
+	for (j=0;j<10;j++){
+		printf("L%d:%g ",j,(double) Best_Design.Mosfets[j].L);
+		printf("IC%d:%g ",j,(double) Best_Design.Mosfets[j].IC);
+				
+		printf("W%d:%g ",j,(double) Best_Design.Mosfets[j].W);
+		printf("Thermal_noise_factor%d:%g ",j,Best_Design.Mosfets[j].Thermal_noise_factor);
+		printf("gm%d:%g ",j,(double) Best_Design.Mosfets[j].gm);
+		printf("u0 %d:%g ",j,(double) Best_Design.Mosfets[j].u0);
+		printf("n0 %d:%g ",j,(double) Best_Design.Mosfets[j].n0);
+		printf("Io %d:%g ",j,(double) Best_Design.Mosfets[j].Io);
+		printf("KF %d:%g ",j,(double) Best_Design.Mosfets[j].KF);
+		printf("AF %d:%g ",j,(double) Best_Design.Mosfets[j].AF);
+		printf("AVTO %d:%g ",j,(double) Best_Design.Mosfets[j].AVTO);
+		printf("VT %d:%g(V) ",j,(double) Best_Design.Mosfets[j].VT);
+		printf("\n"); 
+		}
+	
+	//Creating file.txt with Sizes.	
+	Create_txt_data(Best_Design);
+	
+	
+    // printf() displays the string inside quotation
+    printf("\nHello, World!");
+
+	system("pause");
+    return 0;
+}
+
+
+//----------------------Functions-----------------------------------
+
+double Transconductance_Calc(double Ibias,double IC1){
+	
+	double GM;
+	GM =  Ibias/(n0_nmos*Ut*(sqrt(IC1+0.25)+0.5));
+	return GM;
+}
+
+double OutputResistance_Calc(double L4,double L6,double Ibias){
+	
+	double rds4,rds6,Rout;
+	//Convert L4 and l6 from m to um !!!
+	L4 = L4*1e6;
+	L6 = L6*1e6;
+	
+	rds4 = (Val_nmos*L4)/Ibias;
+	rds6 = (Val_pmos*L6)/Ibias;
+		//Rout = rds4||rds6
+	Rout = (rds4*rds6)/(rds4+rds6);
+	
+	return Rout;
+}
+
+double VoltageGain_Calc(double GM,double Rout){
+	
+	double VoltGain;
+	
+	VoltGain = GM*Rout;
+	
+	return VoltGain;
+}
+
+double FrequencyResponse_Calc(struct device Mosfets[]){
+	
+//	double CGOX;//Gate-oxide capacitance 
+//	double Cgsi5,Cgbi5,Cgsi5_ton,Cgbi5_ton;
+	//Conver W and L from Meters to um
+//	W5 = Mosfets5.W*1e6;
+//	L5 = Mosfets5.L*1e6;
+//	CGOX = W5*L5*Cox ; // ff
+
+	double FreqResponse;
+	double Cgsi5_ton,Cgbi5_ton;
+	
+	if(Mosfets[4].IC < 10 ){
+		// we are in Moderate Inversion : M.I.
+		Cgsi5_ton = 0.3333; 
+		Cgbi5_ton = 0.6666*(Mosfets[4].n0-1)/Mosfets[4].n0 ;
+	}
+	else{
+		// we are in Strong Inversion : S.I.
+		Cgsi5_ton = 0.6666;
+		Cgbi5_ton = 0.3333*(Mosfets[4].n0-1)/Mosfets[4].n0 ;
+		
+	}	
+	
+//	printf("\n\n %lf %lf %lf %lf %lf %lf %lf\n\n:",k,Cgsi5_ton,Cgbi5_ton,Mosfets[4].IC,sqrt(Mosfets[4].IC+0.25)+0.5,Mosfets[4].u0*Ut,(3.14*(Cgsi5_ton+Cgbi5_ton)));
+//	printf("\n %g \n",(0.5)*(Mosfets[4].IC/sqrt(Mosfets[4].IC+0.25)+0.5)*( (Mosfets[4].u0*Ut)/(3.14*(Cgsi5_ton+Cgbi5_ton))));
+ 	
+ 	//*1e-2 for better results (Cause Pole for diode is greater than the real Pole)
+	FreqResponse = (0.5)*(Mosfets[4].IC/sqrt(Mosfets[4].IC+0.25)+0.5)*( (Mosfets[4].u0*Ut*0.0001)/(3.14*(Cgsi5_ton+Cgbi5_ton)*(pow(Mosfets[4].L,2)) ))*1e-2; // Here we must Convert u0 from Cm^2/V*s to m^2/V*s ,So we multi with 0.0001
+	
+	return FreqResponse;
+}
+
+double PhaseMargin_Calc(struct device Mosfets[]){
+	
+	double PM;
+	double CL = 5e-12; // 5 pf
+	double w_GBW;
+	
+	double dominant_pole;
+	double Cgsi5_ton,Cgbi5_ton;
+	
+	//Calculate first pole
+	if(Mosfets[4].IC < 10 ){
+		// we are in Moderate Inversion : M.I.
+		Cgsi5_ton = 0.3333; 
+		Cgbi5_ton = 0.6666*(Mosfets[4].n0-1)/Mosfets[4].n0 ;
+	}
+	else{
+		// we are in Strong Inversion : S.I.
+		Cgsi5_ton = 0.6666;
+		Cgbi5_ton = 0.3333*(Mosfets[4].n0-1)/Mosfets[4].n0 ;
+		
+	}
+	//*1e-2 for better results (Cause Pole for diode is greater than the real Pole)
+	dominant_pole = (0.5)*(Mosfets[4].IC/sqrt(Mosfets[4].IC+0.25)+0.5)*( (Mosfets[4].u0*Ut*0.0001)/(3.14*(Cgsi5_ton+Cgbi5_ton)*(pow(Mosfets[4].L,2)) )); // Here we must Convert u0 from Cm^2/V*s to m^2/V*s ,So we multi with 0.0001
+	
+	//Calculate second pole
+	double second_pole;
+	double Cgsi3_ton,Cgbi3_ton;
+	
+	if(Mosfets[2].IC < 10 ){
+		// we are in Moderate Inversion : M.I.
+		Cgsi3_ton = 0.3333; 
+		Cgbi3_ton = 0.6666*(Mosfets[2].n0-1)/Mosfets[2].n0 ;
+	}
+	else{
+		// we are in Strong Inversion : S.I.
+		Cgsi3_ton = 0.6666;
+		Cgbi3_ton = 0.3333*(Mosfets[2].n0-1)/Mosfets[2].n0 ;
+		
+	}
+	
+	//*1e-2 for better results (Cause Pole for diode is greater than the real Pole)	
+	second_pole = (0.5)*(Mosfets[2].IC/sqrt(Mosfets[2].IC+0.25)+0.5)*( (Mosfets[2].u0*Ut*0.0001)/(3.14*(Cgsi3_ton+Cgbi3_ton)*(pow(Mosfets[3].L,2)) ));    // Here we must Convert u0 from Cm^2/V*s to m^2/V*s ,So we multi with 0.0001
+ 	
+ 	
+ 	w_GBW = Mosfets[1].gm / CL*1e3 ;    // w_GBW // Converting CL to ff
+ 	
+ 	PM = 180 -  ( (atan(w_GBW/dominant_pole)*180 )/3.14 )*0.75   - ( (atan(w_GBW/second_pole)*180 )/3.14 )*0.75  ; //*0.75  
+	return PM;
+}
+
+double Thermal_Noise_Calc(struct device Mosfets[]){
+	
+	double SVin_thermal;
+	double RNP1,RNP3,RNP5,RNP7;
+	
+	RNP1 = (Mosfets[0].n0*Mosfets[0].Thermal_noise_factor)/Mosfets[0].gm; // M1
+	
+	RNP3 = (Mosfets[2].n0*Mosfets[2].Thermal_noise_factor*Mosfets[2].gm)/pow((Mosfets[0].gm),2); // M3
+	RNP5 = (Mosfets[4].n0*Mosfets[4].Thermal_noise_factor*Mosfets[4].gm)/pow((Mosfets[0].gm),2); // M5
+	RNP7 = (Mosfets[6].n0*Mosfets[6].Thermal_noise_factor*Mosfets[6].gm)/pow((Mosfets[0].gm),2); // M7
+	
+	SVin_thermal = 2*4*k*T*(RNP1+RNP3+RNP5+RNP7);
+	return SVin_thermal;
+}
+
+
+double Flicker_Noise_Calc(struct device Mosfets[]){
+	
+	double SVin_flicker = 0 , sum = 0 ;
+	double RNP1,RNP3,RNP5,RNP7;
+	int i,frequency = 50;
+	
+	
+	
+	for(i=1;i<2;i++){
+		frequency = frequency*i;
+		RNP1 = 1;	 // Converting to 1e18
+		RNP3 = (Mosfets[2].KF/Mosfets[0].KF) * ( ( (Mosfets[0].W)*(Mosfets[0].L) ) / ( (Mosfets[2].W)*(Mosfets[2].L) ) ) * pow((Mosfets[2].gm/Mosfets[0].gm),2) * pow(frequency,Mosfets[0].AF-Mosfets[2].AF); 
+		RNP5 = (Mosfets[4].KF/Mosfets[0].KF) * ( ( (Mosfets[0].W)*(Mosfets[0].L) ) / ( (Mosfets[4].W)*(Mosfets[4].L) ) ) * pow((Mosfets[4].gm/Mosfets[0].gm),2) * pow(frequency,Mosfets[0].AF-Mosfets[4].AF);
+		RNP7 = (Mosfets[6].KF/Mosfets[0].KF) * ( ( (Mosfets[0].W)*(Mosfets[0].L) ) / ( (Mosfets[6].W)*(Mosfets[6].L) ) ) * pow((Mosfets[6].gm/Mosfets[0].gm),2) * pow(frequency,Mosfets[0].AF-Mosfets[6].AF);
+	
+		sum =  2*( (Mosfets[0].KF)/ ( (Mosfets[0].W*1e6) * (Mosfets[0].L*1e6) * pow(frequency,Mosfets[0].AF) ) ) * (RNP1 + RNP3 + RNP5 + RNP7);
+	
+		if (sum > 0){
+			SVin_flicker = SVin_flicker + sum ;
+		}
+	}
+	return SVin_flicker*1e-18;
+	
+}
+
+double Offset_Voltage_input_DueTo_Mismatch_Calc(struct device Mosfets[]){
+	
+	double Vsquare_InOffset = 0;
+	double RNP1,RNP3,RNP5,RNP7;
+	
+	RNP1 = 1;
+	RNP3 = pow((Mosfets[2].AVTO/(Mosfets[0].AVTO )),2) * ((Mosfets[0].W*1e6*Mosfets[0].L*1e6)/(Mosfets[2].W*1e6*Mosfets[2].L*1e6)) * pow((Mosfets[2].gm/(Mosfets[0].gm )),2);
+	RNP5 = pow((Mosfets[4].AVTO/(Mosfets[0].AVTO )),2) * ((Mosfets[0].W*1e6*Mosfets[0].L*1e6)/(Mosfets[4].W*1e6*Mosfets[4].L*1e6)) * pow((Mosfets[4].gm/(Mosfets[0].gm )),2);
+	RNP7 = pow((Mosfets[6].AVTO/(Mosfets[0].AVTO )),2) * ((Mosfets[0].W*1e6*Mosfets[0].L*1e6)/(Mosfets[6].W*1e6*Mosfets[6].L*1e6)) * pow((Mosfets[6].gm/(Mosfets[0].gm )),2);
+	
+	Vsquare_InOffset = ( pow(Mosfets[0].AVTO,2) / (Mosfets[0].W*1e6*Mosfets[0].L*1e6) ) * (RNP1 + RNP3 + RNP5 + RNP7);
+	return Vsquare_InOffset;
+	
+}
+
+double Input_Capacitance_Calc(struct device Mosfets[]){
+	
+	double Cindiff = 0;
+	double Cgsi1_ton,Cgbi1_ton;
+	
+	if(Mosfets[0].IC < 10 ){
+		// we are in Moderate Inversion : M.I.
+		Cgsi1_ton = 0.3333; 
+		Cgbi1_ton = 0.6666*(Mosfets[0].n0-1)/Mosfets[0].n0 ;
+	}
+	else{
+		// we are in Strong Inversion : S.I.
+		Cgsi1_ton = 0.6666;
+		Cgbi1_ton = 0.3333*(Mosfets[0].n0-1)/Mosfets[0].n0 ;
+	}
+	// Cox :ff/um^2
+	Cindiff = 0.5 * (Mosfets[0].W*1e6*Mosfets[0].L*1e6 ) * Cox * ( Cgsi1_ton+Cgbi1_ton ); // ff
+	
+	return Cindiff;
+	
+}
+
+
+double Output_Capacitance_Calc(struct device Mosfets[]){
+		double COUT = 0;
+		
+		COUT = (Mosfets[3].W*1e6) * (0.5*Wdif*Mosfets[3].CJ + Mosfets[3].CJSW ) + (Mosfets[5].W*1e6) * (0.5*Wdif*Mosfets[5].CJ + Mosfets[5].CJSW );
+		
+		return COUT;
+}
+
+
+double Slew_Rate_Calc(double COUT,double Ibias){
+	
+	double SlewRate;
+	double CL =5e-12; // 5pf
+	
+	SlewRate = 2*Ibias*1e6/(COUT + CL*1e3); // *1e6 : Converting Ibias to uA , *1e3 : Converting CL to ff
+	return SlewRate;
+	
+}
+
+
+double VINCM_Plus_Calc(struct device Mosfets[]){
+	
+	double VINCM_Plus;
+	
+	VINCM_Plus=VDD+2*Ut*(Mosfets[0].n0*sqrt(Mosfets[0].IC)-Mosfets[4].n0*sqrt(Mosfets[4].IC))+(Mosfets[0].VT-Mosfets[4].VT)-(2*Ut*sqrt(Mosfets[0].IC+0.25)+3*Ut);
+	
+	return VINCM_Plus;
+
+}
+
+
+double VINCM_Minus_Calc(struct device Mosfets[]){
+	
+	double VINCM_Minus;
+	
+	VINCM_Minus=VSS+(2*Mosfets[0].n0*Ut*sqrt(Mosfets[0].IC)+Mosfets[0].VT)+Mosfets[8].VDSsat;
+	
+	return VINCM_Minus;
+
+}
+
+
+double Maximun_Output_Voltage_Calc(struct device Mosfets[]){
+	
+	double VOUT_plus;
+			
+	VOUT_plus = VDD - Mosfets[5].VDSsat;
+	
+	return VOUT_plus;
+
+}
+
+
+double Minimum_Output_Voltage_Calc(struct device Mosfets[]){
+	
+	double VOUT_Minus;
+	
+	VOUT_Minus = VSS + Mosfets[3].VDSsat;
+		
+	return VOUT_Minus;
+
+}
+
+
+double Power_Consumption_Calc(double Ibias){
+	double Power_Consumption;
+	Power_Consumption = (VDD - VSS) * 4 * Ibias*1e6; 
+	return Power_Consumption;
+}
+
+
+
+void Generate_Randoms(int lowerLength, int upperLength,int lowerIC,int upperIC,int lowerIbias,int upperIbias,struct device Mosfets[],double *Ibias) 
+{ 
+// Generates and prints 'count' random 
+// numbers in range [lower, upper].
+    int i; 
+    for (i = 0; i < 10; i=i+2) { 
+        double num = (rand()%(upperLength - lowerLength + 1)) + lowerLength; 
+        num = num*1e-9;
+        Mosfets[i].L = num;
+        Mosfets[i+1].L = num;
+        //printf("%g ",(double) Mosfets[i].L); 
+    } 
+    
+        for (i = 0; i < 10; i=i+2) { 
+        double num = (rand()%(upperIC - lowerIC + 1)) + lowerIC; 
+        num = num;
+        Mosfets[i].IC = num;
+        Mosfets[i+1].IC = num;
+        //printf("%g ",(double) Mosfets[i].L); 
+    } 
+    
+    double num = (rand()%(upperIbias - lowerIbias + 1)) + lowerIbias;
+	num = num*1e-6;
+    *Ibias = num;
+} 
+
+void Initialize_TypeDevices(struct device Mosfets[]){
+		int i;
+	for(i = 0;i < 10; i=i+2){
+		// for nMOS : 
+		if( i==0 || i==2 || i==8 ){
+			Mosfets[i].n0 = n0_nmos;
+			Mosfets[i+1].n0 = n0_nmos;
+			
+			Mosfets[i].u0 = u0_nmos;
+			Mosfets[i+1].u0 = u0_nmos;
+			
+			Mosfets[i].Io = Io_nmos;//*1e6 ; //Convert Io from A to uA ---not
+			Mosfets[i+1].Io = Io_nmos;//*1e6 ; //Convert Io from A to uA ---not
+			
+			Mosfets[i].KF = KF_nmos;
+			Mosfets[i+1].KF = KF_nmos;
+			
+			Mosfets[i].AF = AF_nmos;
+			Mosfets[i+1].AF = AF_nmos;
+			
+			Mosfets[i].AVTO = AVTO_nmos;
+			Mosfets[i+1].AVTO = AVTO_nmos;
+			
+			Mosfets[i].CJ = CJ_nmos;
+			Mosfets[i+1].CJ = CJ_nmos;
+			
+			Mosfets[i].CJSW = CJSW_nmos;
+			Mosfets[i+1].CJSW = CJSW_nmos;
+			
+			Mosfets[i].VT = VT_nmos;
+			Mosfets[i+1].VT = VT_nmos;
+			
+		}
+		// for pMOS:
+		if( i==4 || i==6 ){
+			Mosfets[i].n0 = n0_pmos;
+			Mosfets[i+1].n0 = n0_pmos;
+			
+			Mosfets[i].u0 = u0_pmos;
+			Mosfets[i+1].u0 = u0_pmos;
+			
+			Mosfets[i].Io = Io_pmos ;  //*1e6 ; //Convert Io from A to uA ---not
+			Mosfets[i+1].Io = Io_pmos ; //*1e6 ; //Convert Io from A to uA ---not
+			
+			Mosfets[i].KF = KF_pmos;
+			Mosfets[i+1].KF = KF_pmos;
+			
+			Mosfets[i].AVTO = AVTO_pmos;
+			Mosfets[i+1].AVTO = AVTO_pmos;
+			
+			Mosfets[i].CJ = CJ_pmos;
+			Mosfets[i+1].CJ = CJ_pmos;
+			
+			Mosfets[i].CJSW = CJSW_pmos;
+			Mosfets[i+1].CJSW = CJSW_pmos;
+			
+			Mosfets[i].VT = VT_pmos;
+			Mosfets[i+1].VT = VT_pmos;
+			
+		}
+		
+	}
+}
+
+
+void Calculate_Mosfets_Parameters(struct device Mosfets[],double Ibias){
+
+	int i;
+	//Calculate W for each mosfet ( W =(L/IC)*(ID/Io) )
+	
+	// M0-M7 have Ibias
+	for(i = 0;i < 8; i++){
+		Mosfets[i].W = (Mosfets[i].L/Mosfets[i].IC)*(Ibias/Mosfets[i].Io);
+		Mosfets[i].Thermal_noise_factor = 	( 1/(1+Mosfets[i].IC) )*(0.5 + 0.6666*Mosfets[i].IC);
+		Mosfets[i].gm = Ibias*(1/(Mosfets[i].n0*Ut))*(1/(0.5 + sqrt(0.25 + Mosfets[i].IC)));
+		Mosfets[i].VDSsat = 2*Ut* ((sqrt(Mosfets[i].IC + 0.25) + 0.5) + 1);
+		
+	}
+	
+	// M8-M9 have 2*Ibias
+	for(i = 8;i < 10; i++){
+		Mosfets[i].W = (Mosfets[i].L/Mosfets[i].IC)*((2*Ibias)/Mosfets[i].Io);
+		Mosfets[i].Thermal_noise_factor = 	( 1/(1+Mosfets[i].IC) )*(0.5 + 0.6666*Mosfets[i].IC);
+		Mosfets[i].gm = 2*Ibias*(1/(Mosfets[i].n0*Ut))*(1/(0.5 + sqrt(0.25 + Mosfets[i].IC)));
+	    Mosfets[i].VDSsat = 2*Ut* ((sqrt(Mosfets[i].IC + 0.25) + 0.5) + 1);
+	}
+	
+}
+
+
+void Create_new_Generation(int IndextFirstParent,int IndexSecondParent,	struct SimpleOTA SimpleOTA_Designs[],int NumberOfChilds,int lowerIbias,int upperIbias,int lowerLength, int upperLength,int lowerIC,int upperIC){
+		
+	int i,j;
+	double *Ibias;
+	
+
+	
+	for (i=0;i<NumberOfChilds;i++){
+		
+			
+			// the probability to pick a chromosome from a parrent (50% first parent // 49.09% second parent // 0.01% mutation )
+			double Propability = (rand()%(100 - 0 + 1)) + 0; 
+			double Propability_for_Mutation; 
+			printf("\n Propability :%lf",Propability);
+			
+			// Here we birth Ibias for each child
+			if(Propability<50){
+				SimpleOTA_Designs[i].Ibias = SimpleOTA_Designs[IndextFirstParent].Ibias;
+					}
+			else if(Propability<=97){
+				SimpleOTA_Designs[i].Ibias = SimpleOTA_Designs[IndexSecondParent].Ibias;
+			}
+			else{
+				Propability_for_Mutation = (rand()%(100 - 0 + 1)) + 0;
+				
+				if(Propability_for_Mutation < 150){
+				
+				double mutation_Ibias = (rand()%(upperIbias - lowerIbias + 1)) + lowerIbias;
+					mutation_Ibias = mutation_Ibias*1e-6;
+					SimpleOTA_Designs[i].Ibias = mutation_Ibias;
+					
+				}
+				else{
+					SimpleOTA_Designs[i].Ibias = SimpleOTA_Designs[IndexSecondParent].Ibias;
+				}
+			}
+		
+			
+	
+	
+			// Here we birth Mosfets (Length and IC) for each child
+			int flagForMutation = 0;
+			for (j=0;j<9;j=j+2){
+				Propability = (rand()%(100 - 0 + 1)) + 0; 
+				
+				if(Propability<50){
+					SimpleOTA_Designs[i].Mosfets[j].L = SimpleOTA_Designs[IndextFirstParent].Mosfets[j].L;
+					SimpleOTA_Designs[i].Mosfets[j].IC = SimpleOTA_Designs[IndextFirstParent].Mosfets[j].IC;
+					SimpleOTA_Designs[i].Mosfets[j+1].L = SimpleOTA_Designs[IndextFirstParent].Mosfets[j+1].L;
+					SimpleOTA_Designs[i].Mosfets[j+1].IC = SimpleOTA_Designs[IndextFirstParent].Mosfets[j+1].IC;
+						}
+				else if(Propability<=87){
+					SimpleOTA_Designs[i].Mosfets[j].L = SimpleOTA_Designs[IndexSecondParent].Mosfets[j].L;
+					SimpleOTA_Designs[i].Mosfets[j].IC = SimpleOTA_Designs[IndexSecondParent].Mosfets[j].IC;
+					SimpleOTA_Designs[i].Mosfets[j+1].L = SimpleOTA_Designs[IndexSecondParent].Mosfets[j+1].L;
+					SimpleOTA_Designs[i].Mosfets[j+1].IC = SimpleOTA_Designs[IndexSecondParent].Mosfets[j+1].IC;
+				}
+				else{
+					Propability_for_Mutation = (rand()%(100 - 0 + 1)) + 0;
+					
+					
+						
+					double mutation_L = (rand()%(upperLength - lowerLength + 1)) + lowerLength; 
+					mutation_L = mutation_L*1e-9; //Convert mutation_L from nm to m
+					double mutation_IC = (rand()%(upperIC - lowerIC + 1)) + lowerIC;
+					if(Propability_for_Mutation < 50 && flagForMutation == 0 ){
+						SimpleOTA_Designs[i].Mosfets[j].L = mutation_L ;
+						SimpleOTA_Designs[i].Mosfets[j+1].L = mutation_L ;
+						flagForMutation = 1;
+							
+					}
+					else if(Propability_for_Mutation < 100 && flagForMutation == 0 ){
+						SimpleOTA_Designs[i].Mosfets[j].IC = mutation_IC ;
+						SimpleOTA_Designs[i].Mosfets[j+1].IC = mutation_IC ;
+						flagForMutation = 1;
+						
+					}
+					else{
+						SimpleOTA_Designs[i].Mosfets[j].L = SimpleOTA_Designs[IndexSecondParent].Mosfets[j].L;
+						SimpleOTA_Designs[i].Mosfets[j].IC = SimpleOTA_Designs[IndexSecondParent].Mosfets[j].IC;
+						SimpleOTA_Designs[i].Mosfets[j+1].L = SimpleOTA_Designs[IndexSecondParent].Mosfets[j+1].L;
+						SimpleOTA_Designs[i].Mosfets[j+1].IC = SimpleOTA_Designs[IndexSecondParent].Mosfets[j+1].IC;
+					}
+				}
+			
+			}
+			
+	
+			
+			//calculate Mosfets Parameters For new Child {Calculate_Mosfets_Parameters(struct device Mosfets[],double Ibias)	
+			Calculate_Mosfets_Parameters(SimpleOTA_Designs[i].Mosfets,SimpleOTA_Designs[i].Ibias);
+		
+	
+	}
+	
+
+	
+	
+}
+
+
+void Create_Genocide(int lowerLength, int upperLength,int lowerIC,int upperIC,int IndextFirstParent,int IndexSecondParent,struct SimpleOTA SimpleOTA_Designs[],int NumberOfChilds){
+	
+	
+	
+	//Replace all child that are not Parrents with Aliens.
+	int i; 
+	struct SimpleOTA FirstParent;//Auto isws na einai perito
+	struct SimpleOTA SecondParent;//Auto isws na einai perito
+
+	
+	FirstParent = SimpleOTA_Designs[IndextFirstParent]; //Auto isws na einai perito
+	SecondParent = SimpleOTA_Designs[IndexSecondParent]; //Auto isws na einai perito
+	
+	for (i = 0; i < NumberOfChilds; i++) {
+		
+		//IF a child is not the Parrent we KILL it and replace it with a new randomized child (Alien)!!!
+		//if(i!=IndextFirstParent && i!=IndexSecondParent){
+			
+			//{Generate_Randoms(int lowerLength, int upperLength,int lowerIC,int upperIC,int lowerIbias,int upperIbias,struct device Mosfets[],double *Ibias)} 
+			Generate_Randoms(lowerLength,upperLength,lowerIC,upperIC,20,50,SimpleOTA_Designs[i].Mosfets,&(SimpleOTA_Designs[i].Ibias));
+			
+			//calculate Mosfets Parameters For Alien {Calculate_Mosfets_Parameters(struct device Mosfets[],double Ibias)
+			Calculate_Mosfets_Parameters(SimpleOTA_Designs[i].Mosfets,SimpleOTA_Designs[i].Ibias);
+			
+		//}	
+		
+	}
+	
+	//SimpleOTA_Designs[IndextFirstParent] = FirstParent; //Auto isws na einai perito
+	//SimpleOTA_Designs[IndexSecondParent] = SecondParent; //Auto isws na einai perito
+		
+}
+
+
+void Create_txt_data (struct SimpleOTA Best_Design){
+
+	FILE *f = fopen("Size_data_Sheet.txt", "w");
+	if (f == NULL)
+	{
+	    printf("Error opening file!\n");
+	    exit(1);
+	}
+	
+	int i;
+	int k;
+
+
+	for( i=0 ; i<10; i++){
+		
+		k =  (Best_Design.Mosfets[i].W)/250e-9;
+		if( (k+0.5)*250e-9 > Best_Design.Mosfets[i].W ){		
+			fprintf(f,"W%d: %g",i+1,k*250e-9);
+		}
+		else{
+			fprintf(f,"W%d: %g",i+1,(k+1)*250e-9);
+		}
+		
+		
+		k =  (Best_Design.Mosfets[i].L)/250e-9;
+		if( (k+0.5)*250e-9 > Best_Design.Mosfets[i].L ){		
+			fprintf(f," L%d: %g\n",i+1,k*250e-9);
+		}
+		else{
+			fprintf(f," L%d: %g\n",i+1,(k+1)*250e-9);
+		}
+
+		k=0;
+	//	fprintf(f,"W%d: %g",i+1,SimpleOTA_Designs[index].Mosfets[i].W);
+	//	fprintf(f," L%d: %g\n",i+1,SimpleOTA_Designs[index].Mosfets[i].L);
+		}
+	
+		fclose(f);
+}
+
+
+
+
+
+//Notes for me
+//	Na dokimasw na alaksw to initialize sta tempfirstparent tempsecondparent
+
+
+
+
+
+
+
+
+
