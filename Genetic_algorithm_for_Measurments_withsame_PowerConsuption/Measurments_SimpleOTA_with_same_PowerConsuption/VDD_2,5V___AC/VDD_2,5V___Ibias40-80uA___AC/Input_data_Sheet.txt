@@ -1,0 +1,61 @@
+n0_nmos = [1.36203416634948]
+n0_pmos = [1.49929191506295]
+Ut = [0.025852] Volts
+Lsat = [355] nm
+Val_nmos = [15] V/um  
+Val_pmos = [15] V/um
+Cox = [6.9] ff/um^2
+u0_nmos = [507.4947] cm^2/V*s
+u0_pmos = [101.4987] cm^2/V*s
+Io_nmos = [539.252351227600] nA 
+Io_pmos = [164.269005014000] nA
+T = [300] K
+VT_nmos = [200] mV
+VT_pmos = [280] mV 
+KF_nmos = [2.7] (C^2/cm^2)e-25 
+AF_nmos = [0.85]
+KF_pmos = [0.9] (C^2/cm^2)e-25 
+AF_pmos = [0.9]
+AVTO_nmos = [14] mV*um 
+AVTO_pmos = [14] mV*um 
+CJ_nmos = [1.4] ff/um^2    
+CJ_pmos = [0.98] ff/um^2 
+CJSW_nmos = [2.55] ff/um
+CJSW_pmos = [1.5] ff/um
+Wdif = [25] nm
+VDD = [2.5] Volts
+VSS = [0] Volts
+CL = [5] pf
+Lowest_Ibias = [40] uA_(for_same_Power_ConsuptionMeasurments)
+
+//Powers_for_FOM    
+//Must_be_in_Range_"[0.2-1.8]" 
+a0 = [0.2] For_VoltageGain 
+a1 = [1.6] For_FrequencyResponse
+a2 = [0.2] For_Thermal_Noise
+a3 = [0.2] For_Flicker_Noise
+a4 = [0.2] For_Offset_Voltage_input_DueTo_Mismatch 
+a5 = [1.6] For_Slew_Rate 
+a6 = [0.2] For_Input_Voltage_Range 
+a7 = [0.2] For_Output_Voltage_Range 
+a8 = [1.6] For_PhaseMargin
+a9 = [0.6] For_Power_Consumption
+
+
+//IC_Ranges_for_Current_Mirror_Load_OTA
+//Greater_than_0,001
+lower_IC1 = [0.5]   upper_IC1 = [0.9] For_M1_M2_differantial_pair
+lower_IC3 = [4.2]   upper_IC3 = [11.2] For_M3_M4_current_Mirror
+lower_IC5 = [15.3]   upper_IC5 = [15.4] For_M5_M6_current_Mirror	
+lower_IC7 = [20]   upper_IC7 = [40] For_M7_M8_current_Mirror
+lower_IC9 = [5]   upper_IC9 = [25] For_M9_M10_current_Mirror
+
+
+//IC_Ranges_for_Cascoded_OTA
+//Greater_than_0,001
+lower_IC1 = [0.5]   upper_IC1 = [2.11] For_M1_M2_differantial_pair
+lower_IC3 = [0.6]   upper_IC3 = [3.331] For_M3_M4_current_Mirror
+lower_IC5 = [0.7]   upper_IC5 = [5.66] For_M5_M6_current_Mirror	
+lower_IC7 = [0.8]   upper_IC7 = [6.11] For_M7_M8_current_Mirror
+lower_IC9 = [0.9]   upper_IC9 = [7.99] For_M9_M10_current_Mirror
+lower_IC15 = [0.11]   upper_IC15 = [8.55] For_M15_DiffBiasCurrent

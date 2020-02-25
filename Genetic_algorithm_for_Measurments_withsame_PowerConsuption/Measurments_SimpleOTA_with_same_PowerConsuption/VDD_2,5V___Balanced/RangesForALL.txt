@@ -1,0 +1,5 @@
+LowestLength = 250nm
+HighestLength = 2000nm
+
+LowestIC = 2
+HighestIC = 8
